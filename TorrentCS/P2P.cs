@@ -2,6 +2,7 @@
 using System.Collections;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Net;
 using System.Net.Sockets;
@@ -255,7 +256,7 @@ namespace TorrentCS
 
         }
 
-        public byte[] download(byte[] peerId,TorrentFile torrentFile,Peers[] peers)
+        public void download(byte[] peerId,TorrentFile torrentFile,Peers[] peers, FileStream fsoutTmp, FileStream fsDownloadPieces)
         {
             Console.WriteLine("开始下载：");
             Console.WriteLine("Hello World!");
@@ -299,15 +300,24 @@ namespace TorrentCS
             }
 
             // 获取下载结果
-            byte[] buf = new byte[torrentFile.Length];
+
+            // 创建临时文件  
+           
+            
+
+            //byte[] buf = new byte[torrentFile.Length];
             int donePieces = 0;
             int[] flags = new int[pieceLen]; 
+            
             while (donePieces < pieceLen) {
                 while (pieceResultQueue.Count == 0) {}
                 PieceResult pieceResult = new PieceResult();
                 pieceResultQueue.TryDequeue(out pieceResult);
                 int[] bounds = calculateBounds(pieceResult.index);
-                Array.ConstrainedCopy(pieceResult.buf, 0, buf, bounds[0], bounds[1] - bounds[0]);
+
+                Files.saveBytes(fsoutTmp, fsDownloadPieces, pieceResult.buf, pieceResult.index, bounds[0], bounds[1] - bounds[0]);
+
+                //Array.ConstrainedCopy(pieceResult.buf, 0, buf, bounds[0], bounds[1] - bounds[0]);
                 donePieces += 1;
                 flags[pieceResult.index] = 1;
                 float percent = ((float)donePieces) / (float)(this.PieceHashes.Length) * 100;
@@ -316,10 +326,10 @@ namespace TorrentCS
                     + "  remain"+ pieceQueue.Count +" pieces\n" );
 
             }
-
+            
             Task.WaitAll(taskArray);
 
-            return buf;
+            //return buf;
            
             //foreach (var task in taskArray)
             //{

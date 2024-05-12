@@ -84,8 +84,11 @@
   <ItemGroup>
     <Compile Include="Bitfield.cs" />
     <Compile Include="Client.cs" />
+    <Compile Include="Exeption.cs" />
+    <Compile Include="Files.cs" />
     <Compile Include="HandShake.cs" />
     <Compile Include="HttpUtil.cs" />
+    <Compile Include="instanceof.cs" />
     <Compile Include="Message.cs" />
     <Compile Include="P2P.cs" />
     <Compile Include="Peers.cs" />

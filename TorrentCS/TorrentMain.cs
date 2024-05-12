@@ -14,6 +14,8 @@ namespace TorrentCS
         {
             string input = "D:/destop/go/torrent-client-master/torrentfile/testdata/debian-12.4.0-amd64-netinst.iso.torrent";
             string output = "D:/destop/go/torrent-client-master/torrentfile/testdata/output.iso";
+            string outTmp = "D:/destop/go/torrent-client-master/torrentfile/testdata/output.ftmp";
+            string downloadPieces = "D:/destop/go/torrent-client-master/torrentfile/testdata/downloadPieces.ftmp";
             string output2 = "D:/destop/go/torrent-client-master/torrentfile/testdata/test2.txt";
 
            
@@ -21,7 +23,7 @@ namespace TorrentCS
             var parser = new BencodeParser(); // Default encoding is Encoding.UTF8, but you can specify another if you need to
             Torrent torrent = parser.Parse<Torrent>(input);
         
-            downloadFile(torrent,output);
+            downloadFile(torrent,output,outTmp, downloadPieces);
           
 
 
@@ -29,7 +31,7 @@ namespace TorrentCS
 
         }
 
-        public static void downloadFile(Torrent torrent,String output)
+        public static void downloadFile(Torrent torrent,String output,String outTmp,String downloadPieces)
         {
 
             TorrentFile torrentFile = new TorrentFile(torrent.Trackers, torrent.Pieces, torrent.PieceSize, torrent.TotalSize, torrent.DisplayName, torrent.GetInfoHashBytes());
@@ -45,7 +47,19 @@ namespace TorrentCS
             byte[] buf = new byte[torrentFile.Length];
             try
             {
-                buf = p2p.download(peerId, torrentFile,Peers);
+
+                using (FileStream fsoutTmp = new FileStream(outTmp, FileMode.Create)) {
+                    using (FileStream fsDownloadPieces = new FileStream(downloadPieces, FileMode.Create))
+                    {
+                        // 设置文件长度 
+                        Files.initOutputFile(fsoutTmp, torrentFile.Length);
+                        Files.initDownloadFile(fsDownloadPieces, torrentFile.PiecesHash.Count);
+                        p2p.download(peerId, torrentFile, Peers, fsoutTmp, fsDownloadPieces);
+
+                    }
+                }
+                Files.changeFile(outTmp, output);
+
             }
             catch (Exception e)
             {
@@ -53,10 +67,6 @@ namespace TorrentCS
                 return;
             }
 
-            Console.WriteLine("保存下载数据");
-            using (FileStream fs_write = File.Create(output)) {
-                fs_write.Write(buf, 0, buf.Length);
-            }
             
 
         }
