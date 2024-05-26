@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Net;
 using System.Net.Sockets;
@@ -12,28 +13,24 @@ namespace TorrentCS
     {
         static void Main(string[] args)
         {
-            string input = "D:/destop/go/torrent-client-master/torrentfile/testdata/debian-12.4.0-amd64-netinst.iso.torrent";
-            string output = "D:/destop/go/torrent-client-master/torrentfile/testdata/output.iso";
-            string outTmp = "D:/destop/go/torrent-client-master/torrentfile/testdata/output.ftmp";
-            string downloadPieces = "D:/destop/go/torrent-client-master/torrentfile/testdata/downloadPieces.ftmp";
-            string output2 = "D:/destop/go/torrent-client-master/torrentfile/testdata/test2.txt";
+            
+            string input1 = "D:/destop/Beekeeper.torrent";
+            string output = "D:/destop/output1.mp4";
+            string outTmp = "D:/destop/output.ftmp";
+            string downloadPieces = "D:/destop/downloadPieces.ftmp";
+            
 
-           
             // Parse torrent by specifying the file path
             var parser = new BencodeParser(); // Default encoding is Encoding.UTF8, but you can specify another if you need to
-            Torrent torrent = parser.Parse<Torrent>(input);
+            Torrent torrent = parser.Parse<Torrent>(input1);
         
             downloadFile(torrent,output,outTmp, downloadPieces);
           
-
-
-          
-
         }
 
         public static void downloadFile(Torrent torrent,String output,String outTmp,String downloadPieces)
         {
-
+            
             TorrentFile torrentFile = new TorrentFile(torrent.Trackers, torrent.Pieces, torrent.PieceSize, torrent.TotalSize, torrent.DisplayName, torrent.GetInfoHashBytes());
 
             //IList<IList<string>> list = torrentFile.Trackers;
@@ -47,18 +44,17 @@ namespace TorrentCS
             byte[] buf = new byte[torrentFile.Length];
             try
             {
-
-                using (FileStream fsoutTmp = new FileStream(outTmp, FileMode.Create)) {
-                    using (FileStream fsDownloadPieces = new FileStream(downloadPieces, FileMode.Create))
+                using (FileStream fsoutTmp = new FileStream(outTmp, FileMode.OpenOrCreate)) {
+                    using (FileStream fsDownloadPieces = new FileStream(downloadPieces, FileMode.OpenOrCreate))
                     {
-                        // 设置文件长度 
+                        // 设置文件长度
                         Files.initOutputFile(fsoutTmp, torrentFile.Length);
                         Files.initDownloadFile(fsDownloadPieces, torrentFile.PiecesHash.Count);
                         p2p.download(peerId, torrentFile, Peers, fsoutTmp, fsDownloadPieces);
 
                     }
                 }
-                Files.changeFile(outTmp, output);
+                Files.changeFile(outTmp, output, downloadPieces);
 
             }
             catch (Exception e)
@@ -66,8 +62,6 @@ namespace TorrentCS
                 Console.WriteLine("下载错误，退出程序。");
                 return;
             }
-
-            
 
         }
     }

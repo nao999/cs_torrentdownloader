@@ -128,7 +128,7 @@ namespace TorrentCS
 
             //connect()向服务端发出连接请求。客户端不需要bind()绑定ip和端口号，
             //因为系统会自动生成一个随机的地址（具体应该为本机IP+随机端口号）
-            client_socket.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReceiveTimeout, 3000);
+            client_socket.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReceiveTimeout, 5000);
            
             client_socket.Connect(ipEndpoint);
             

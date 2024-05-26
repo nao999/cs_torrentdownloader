@@ -26,6 +26,37 @@ namespace TorrentCS
     class HttpUtil
     {
         private static readonly object _lockObject = new object();
+
+        public static void getPeers(byte[] peerId, TorrentFile torrentFile, string tracker, Task<int>[] task,int index, HashSet<Peers> peerList)
+        {
+            string url = HttpUtil.buildUrl(peerId, torrentFile, tracker);
+
+
+            task[index] = new Task<int>(() =>
+            {
+                byte[] peersBin = Get(url);
+                //Console.WriteLine("获取url：" + url);
+                Console.WriteLine("");
+                if (peersBin != null)
+                {
+                    Peers[] peerArr = getPeerArr(peersBin);
+                    for (int i = 0; i < peerArr.Length; i++)
+                    {
+                        lock (_lockObject)
+                        {
+
+                            peerList.Add(peerArr[i]);
+                            Console.WriteLine("Peers:" + peerArr[i].Ip[0] + "." + peerArr[i].Ip[1] + "." + peerArr[i].Ip[2] + "." + peerArr[i].Ip[3]);
+                        }
+                    }
+                    Console.WriteLine("");
+                }
+                return 0;
+            });
+            task[index].Start();
+
+        }
+
         public static Peers[] requestPeers(byte[] peerId,TorrentFile torrentFile) {
 
             IList<IList<string>> trackerList = torrentFile.Trackers;
@@ -36,28 +67,16 @@ namespace TorrentCS
             int index = 0;
             foreach (IList<string> list in trackerList) {
                 string tracker = list[0];
-
-                string url = HttpUtil.buildUrl(peerId, torrentFile, tracker);
-
-                
-                taskArray[index] = new Task<int>(() =>
+                Uri trakcerUri = new Uri(tracker);
+                Console.WriteLine("url:" + tracker);
+                if (trakcerUri.Scheme.Equals("udp"))
                 {
-                    byte[] peersBin = Get(url);
-                    Console.WriteLine("获取url" + url);
-                    if (peersBin != null)
-                    {
-                        Peers[] peerArr = getPeerArr(peersBin);
-                        for (int i = 0; i < peerArr.Length; i++)
-                        {
-                            lock (_lockObject) {
-                                
-                                peerList.Add(peerArr[i]);
-                            }
-                        }
-                    }
-                    return 0;
-                });
-                taskArray[index].Start();
+                    UdpUtil.getPeers(peerId, torrentFile, trakcerUri, taskArray,index, peerList);
+                }
+                else
+                {
+                    HttpUtil.getPeers(peerId, torrentFile, tracker,taskArray,index,peerList);
+                }
 
                 index++;
             }
@@ -98,15 +117,18 @@ namespace TorrentCS
             //httpClient.Timeout = TimeSpan.FromSeconds(10);
             HttpResponseMessage res = new HttpResponseMessage();
             Task<HttpResponseMessage> task = null;
+            
+            
             try
             {
-                 task = httpClient.GetAsync(url);
+                task = httpClient.GetAsync(url);
                 res = task.Result;
             }
             catch (Exception e)
             {
                 return null;
             }
+            Console.WriteLine("url:" + url + ".statusCode:" + res.StatusCode.ToString() + "content:" + res.Content.ToString());
             if (res != null && res.IsSuccessStatusCode && res.Content != null)
             {
                 Task<byte[]> t = res.Content.ReadAsByteArrayAsync();
@@ -114,9 +136,20 @@ namespace TorrentCS
 
                 BDictionary bdictionary = parser.Parse<BDictionary>(t.Result);
 
+                
                 BString bstring = bdictionary.Get<BString>("peers");
-
-
+                BString bstring6 = bdictionary.Get<BString>("peers6");
+                if (bstring != null) { 
+                
+                    Console.WriteLine("peers:" + bstring.Length);
+                }
+                if (bstring6 != null)
+                {
+                    Console.WriteLine("peers6:" + bstring6.Length);
+                }
+                if (bstring == null ) {
+                    return null;
+                }
                 //BString bstring = parser.ParseString<BString>(peerObject.EncodeAsString());
                 byte[] peerByte = bstring.EncodeAsBytes();
                 //BString ss = new BString(peerByte);
@@ -138,7 +171,7 @@ namespace TorrentCS
             url.info_hash = HttpUtility.UrlEncode(torrentFile.InfoHash);
             
             url.peer_id = HttpUtility.UrlEncode(peerId);
-            url.port = "6881";
+            url.port = "6882";
             url.uploaded = "0";
             url.downloaded = "0";
             url.compact = "1";

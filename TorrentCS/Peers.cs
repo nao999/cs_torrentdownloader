@@ -37,13 +37,15 @@ namespace TorrentCS
 
         public override int GetHashCode()
         {
-            unchecked // Overflow is fine, just wrap  
+           
+            int hash = 17;
+            hash = hash * 23 + port.GetHashCode();
+            for (int i = 0; i < ip.Length; i++)
             {
-                int hash = 17;
-                hash = hash * 23 + port.GetHashCode();
-                hash = hash * 23 + (ip != null ? ip.GetHashCode() : 0);
-                return hash;
+                hash = hash * 23 +  ip[i].GetHashCode() ;
             }
+            return hash;
+          
         }
     }
 }

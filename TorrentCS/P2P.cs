@@ -13,9 +13,21 @@ using System.Threading.Tasks;
 
 namespace TorrentCS
 {
-   
+
     class P2P
     {
+        struct TaskData {
+            public Peers peer;
+            public byte[] infoHash;
+            public byte[] peerId;
+            public byte[][] pieceHashes;
+            public int length;
+            public int name;
+            public ConcurrentStack<PieceWork> pieceStack;
+            public ConcurrentQueue<PieceProgress> pieceProgressQueue;
+            public ConcurrentQueue<PieceResult> pieceResultQueue;
+        }
+
         struct PieceResult {
 
             public int index;
@@ -64,7 +76,7 @@ namespace TorrentCS
         private int pieceLength;
         private int length;
         private int name;
-        private ConcurrentQueue<PieceWork> pieceQueue = new ConcurrentQueue<PieceWork>();
+        private ConcurrentStack<PieceWork> pieceStack = new ConcurrentStack<PieceWork>();
         private ConcurrentQueue<PieceProgress> pieceProgressQueue = new ConcurrentQueue<PieceProgress>();
         private ConcurrentQueue<PieceResult> pieceResultQueue = new ConcurrentQueue<PieceResult>();
 
@@ -108,7 +120,7 @@ namespace TorrentCS
             }
             //if (message.MessageID > 0)
             //{
-                Console.WriteLine(peer.Ip[0] + "." + peer.Ip[1] + "." + peer.Ip[2] + "." + peer.Ip[3] + ":ReadMsg:" + message.MessageID);
+            //Console.WriteLine(peer.Ip[0] + "." + peer.Ip[1] + "." + peer.Ip[2] + "." + peer.Ip[3] + ":ReadMsg:" + message.MessageID);
             //}
             switch (message.MessageID)
             {
@@ -206,19 +218,14 @@ namespace TorrentCS
             client.sendUnchoke();
             client.sendInterested();
 
-            /** 下载思路:
-             * 构建一个队列，里面存放对应每一个pieces，每个任务取出pieces，判断该节点是否有这个pieces，没有则放回，让别的任务使用。
-             * 
-
-            **/
-
-            while(pieceQueue.Count != 0)
+           
+            while(pieceStack.Count != 0)
             {
                 //Console.WriteLine("peer:" + peer.Ip[0] + "," + peer.Ip[1] + "," + peer.Ip[2] + "," + peer.Ip[3] + ":" + peer.Port);
                 PieceWork pieceWork = new PieceWork();
-                pieceQueue.TryDequeue(out pieceWork);
+                pieceStack.TryPop(out pieceWork);
                 if (!client.Bitfield.hashPieces(pieceWork.index)) {
-                    pieceQueue.Enqueue(pieceWork);
+                    pieceStack.Push(pieceWork);
                     continue;
                 }
                 byte[] buf = null;
@@ -228,11 +235,11 @@ namespace TorrentCS
                 }
                 catch (Exception e) {
                     Console.WriteLine(e.Message);
-                    pieceQueue.Enqueue(pieceWork);
+                    pieceStack.Push(pieceWork);
                     return;
                 }
                 if (buf == null) {
-                    pieceQueue.Enqueue(pieceWork);
+                    pieceStack.Push(pieceWork);
                     Thread.Sleep(500);
                     continue;
                 }
@@ -240,7 +247,7 @@ namespace TorrentCS
                 if (!checkIntegrity(pieceWork, buf)) {
                     Console.WriteLine("Piece #" + pieceWork.index + " failed integrity check");
 
-                    pieceQueue.Enqueue(pieceWork); // Put piece back on the queue
+                    pieceStack.Push(pieceWork); // Put piece back on the queue
                     Thread.Sleep(500);
                     continue;
                 }
@@ -256,32 +263,78 @@ namespace TorrentCS
 
         }
 
+
+        int addTasks(Task<int>[] taskArray , TaskData taskData,int index) {
+            for (int i = 0; i < taskArray.Length; i++)
+            {
+                if (taskArray[i].IsCompleted) {
+                    taskArray[i] = new Task<int>((Object obj) =>
+                    {
+                        P2P data = obj as P2P;
+                        if (data == null) return -1;
+                        data.startTask();
+                        return 0;
+                    //data.ThreadNum = Thread.CurrentThread.ManagedThreadId;
+                    },
+                    new P2P()
+                    {
+                        peer = taskData.peer,
+                        infoHash = taskData.infoHash,
+                        peerId = taskData.peerId,
+                        pieceHashes = taskData.pieceHashes,
+                        length = taskData.length,
+                        name = taskData.name,
+                        pieceStack = taskData.pieceStack,
+                        pieceProgressQueue = taskData.pieceProgressQueue,
+                        pieceResultQueue = taskData.pieceResultQueue
+                    });
+                    taskArray[i].Start();
+                    index++;
+                }
+            }
+            return index;
+        }
+
         public void download(byte[] peerId,TorrentFile torrentFile,Peers[] peers, FileStream fsoutTmp, FileStream fsDownloadPieces)
         {
             Console.WriteLine("开始下载：");
             Console.WriteLine("Hello World!");
 
-            ConcurrentQueue<PieceWork> pieceQueue = new ConcurrentQueue<PieceWork>();
+            ConcurrentStack<PieceWork> pieceStack = new ConcurrentStack<PieceWork>();
             int pieceLen = torrentFile.PiecesHash.Count;
             pieceHashes = new byte[pieceLen][];
             pieceLength = (int) torrentFile.PieceLength;
             length = (int)torrentFile.Length;
 
+            byte[] flags = new byte[pieceLen];
+            fsDownloadPieces.Read(flags, 0, pieceLen);
+            int donePieces = 0;
+            for (int i = 0; i < pieceLen; i++) {
+                if (flags[i] == 1)
+                {
+                    donePieces += 1;
+                }
+            }
             for (int i = 0; i < torrentFile.PiecesHash.Count; i++) {
                 List<byte> hashList = torrentFile.PiecesHash[i];
                 pieceHashes[i] = hashList.ToArray();
             }
 
-            for (int i = 0; i < pieceHashes.Length; i++)
+            for (int i = pieceHashes.Length - 1; i  >= 0; i--)
             {
-                int len = calculatePieceSize(i);
-                PieceWork pieceWork = new PieceWork(i, pieceHashes[i], len);
-                pieceQueue.Enqueue(pieceWork);
+                if (flags[i] == 0)
+                {
+                    int len = calculatePieceSize(i);
+                    PieceWork pieceWork = new PieceWork(i, pieceHashes[i], len);
+                    pieceStack.Push(pieceWork);
+                }
             }
 
             // 启动下载队列
-            Task<int>[] taskArray = new Task<int>[peers.Length];
-            for (int i = 0; i < taskArray.Length; i++)
+            int taskLen = peers.Length < 20 ? peers.Length : 20;
+            Task<int>[] taskArray = new Task<int>[taskLen];
+            int index = 0;
+            for (int i = 0; i < taskLen; i++)
             {
                 taskArray[i] = new Task<int>((Object obj) =>
                 {
@@ -293,61 +346,59 @@ namespace TorrentCS
                 },
                 new P2P() {
                     peer = peers[i], infoHash = torrentFile.InfoHash, peerId = peerId, pieceHashes = pieceHashes,
-                    length = length,name = i,pieceQueue = pieceQueue,pieceProgressQueue = pieceProgressQueue,
+                    length = length,name = i,pieceStack = pieceStack,pieceProgressQueue = pieceProgressQueue,
                     pieceResultQueue = pieceResultQueue
                 }) ; 
                 taskArray[i].Start();
+                index++;
             }
 
             // 获取下载结果
 
-            // 创建临时文件  
-           
-            
-
             //byte[] buf = new byte[torrentFile.Length];
-            int donePieces = 0;
-            int[] flags = new int[pieceLen]; 
+            
             
             while (donePieces < pieceLen) {
-                while (pieceResultQueue.Count == 0) {}
-                PieceResult pieceResult = new PieceResult();
-                pieceResultQueue.TryDequeue(out pieceResult);
-                int[] bounds = calculateBounds(pieceResult.index);
+                if (index < peers.Length)
+                {
+                    TaskData taskData = new TaskData();
+                    taskData.peer = peers[index];
+                    taskData.infoHash = torrentFile.InfoHash;
+                    taskData.peerId = peerId;
+                    taskData.pieceHashes = pieceHashes;
+                    taskData.length = length;
+                    taskData.name = index;
+                    taskData.pieceStack = pieceStack;
+                    taskData.pieceProgressQueue = pieceProgressQueue;
+                    taskData.pieceResultQueue = pieceResultQueue;
+                    index = addTasks(taskArray, taskData, index);
+                }
+                if (pieceResultQueue.Count != 0)
+                {
+                    PieceResult pieceResult = new PieceResult();
+                    pieceResultQueue.TryDequeue(out pieceResult);
+                    int[] bounds = calculateBounds(pieceResult.index);
 
-                Files.saveBytes(fsoutTmp, fsDownloadPieces, pieceResult.buf, pieceResult.index, bounds[0], bounds[1] - bounds[0]);
+                    Files.saveBytes(fsoutTmp, fsDownloadPieces, pieceResult.buf, pieceResult.index, bounds[0], bounds[1] - bounds[0]);
 
-                //Array.ConstrainedCopy(pieceResult.buf, 0, buf, bounds[0], bounds[1] - bounds[0]);
-                donePieces += 1;
-                flags[pieceResult.index] = 1;
-                float percent = ((float)donePieces) / (float)(this.PieceHashes.Length) * 100;
-                Peers peer = pieceResult.peer;
-                Console.WriteLine( percent + "% Downloaded piece" + pieceResult.index +"by " + peer.Ip[0] + "," + peer.Ip[1] + "," + peer.Ip[2] + "," + peer.Ip[3] + ":" + peer.Port 
-                    + "  remain"+ pieceQueue.Count +" pieces\n" );
-
+                    //Array.ConstrainedCopy(pieceResult.buf, 0, buf, bounds[0], bounds[1] - bounds[0]);
+                    donePieces += 1;
+                    flags[pieceResult.index] = 1;
+                    float percent = ((float)donePieces) / (float)(this.PieceHashes.Length) * 100;
+                    Peers peer = pieceResult.peer;
+                    Console.WriteLine(percent + "% Downloaded piece" + pieceResult.index + "by " + peer.Ip[0] + "," + peer.Ip[1] + "," + peer.Ip[2] + "," + peer.Ip[3] + ":" + peer.Port
+                        + "  remain" + pieceStack.Count + " pieces\n");
+                }
+               
             }
             
             Task.WaitAll(taskArray);
 
-            //return buf;
            
-            //foreach (var task in taskArray)
-            //{
-            //    //Console.WriteLine(task.Result);
-            //    var data = task.AsyncState as P2P;
-            //    if (data != null)
-            //    {
-            //        Console.WriteLine(data.num);
-
-            //        //Console.WriteLine("Task #{0} created at {1}, ran on thread #{2}.",
-            //        //                  data.Name, data.CreationTime, data.ThreadNum);
-
-            //    }
-
-            //}
 
 
         }
-        
+
+       
     }
 }

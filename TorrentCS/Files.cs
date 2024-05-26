@@ -25,20 +25,34 @@ namespace TorrentCS
         public static void initOutputFile(FileStream fileStream, long len)
         {
             Console.WriteLine("初始化文件。");
+            FileInfo fileInfo = new FileInfo(fileStream.Name);
+            if (fileInfo.Length == 0)
+            {
+                fileStream.SetLength(len);
+            }
+            else {
+                Console.WriteLine("文件已经存在。");
+            }
 
-            fileStream.SetLength(len);
-           
         }
         public static void initDownloadFile(FileStream fileStream, int pieceLen)
         {
             Console.WriteLine("初始化文件。");
-
-            fileStream.SetLength(pieceLen);
-            byte[] buf = new byte[pieceLen];
-            fileStream.Write(buf, 0, pieceLen);
+            FileInfo fileInfo = new FileInfo(fileStream.Name);
+            if (fileInfo.Length == 0)
+            {
+                fileStream.SetLength(pieceLen);
+                byte[] buf = new byte[pieceLen];
+                fileStream.Write(buf, 0, pieceLen);
+            }
+            else
+            {
+                Console.WriteLine("文件已经存在。");
+            }
+            
         }
 
-        public static void changeFile(String outTmp, String output)
+        public static void changeFile(String outTmp, String output,String downloadPieces)
         {
 
             Console.WriteLine("将临时文件修改为实际下载文件。");
@@ -52,6 +66,8 @@ namespace TorrentCS
             {
                 Console.WriteLine("原始文件不存在于 " + outTmp);
             }
+            Console.WriteLine("删除索引文件。");
+            File.Delete(downloadPieces);
         }
     }
 }

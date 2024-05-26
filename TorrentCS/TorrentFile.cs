@@ -16,7 +16,7 @@ namespace TorrentCS
         private string torrentName;
         private List<List<byte>> piecesHash;
         private byte[] infoHash;
-       
+        private String fileName;
 
         
 
@@ -65,5 +65,6 @@ namespace TorrentCS
         public string TorrentName { get => torrentName; set => torrentName = value; }
         public List<List<byte>> PiecesHash { get => piecesHash; set => piecesHash = value; }
         public byte[] InfoHash { get => infoHash; set => infoHash = value; }
+        public string FileName { get => fileName; set => fileName = value; }
     }
 }
